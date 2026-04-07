@@ -18,3 +18,8 @@ body {
   background-color: var(--bg-base);
   color: var(--text-primary);
 }
+
+.mask-edges {
+  -webkit-mask-image: linear-gradient(to right, transparent, black 40px, black calc(100% - 40px), transparent);
+  mask-image: linear-gradient(to right, transparent, black 40px, black calc(100% - 40px), transparent);
+}
