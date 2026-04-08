@@ -108,6 +108,29 @@ function getParentTopicIdFromDailyId(dailyId: string): string | null {
   return null;
 }
 
+function getCanonicalTopicId(topicId: string): string {
+  return getParentTopicIdFromDailyId(topicId) ?? topicId;
+}
+
+function normalizeSubtopicId(subtopicId: string): string | null {
+  const match = subtopicId.match(/^(.*)-sub-(\d+)$/);
+  if (!match || !match[1] || !match[2]) return null;
+
+  const canonicalTopicId = getCanonicalTopicId(match[1]);
+  return `${canonicalTopicId}-sub-${match[2]}`;
+}
+
+function getSubtopicIdsForTopic(topicId: string): string[] {
+  const canonicalTopicId = getCanonicalTopicId(topicId);
+  return [1, 2, 3].map((index) => `${canonicalTopicId}-sub-${index}`);
+}
+
+function getTopicIdFromSubtopicId(subtopicId: string): string | null {
+  const normalized = normalizeSubtopicId(subtopicId);
+  if (!normalized) return null;
+  return normalized.replace(/-sub-\d+$/, '');
+}
+
 function detectGoalProfile(domainText: string): GoalProfile {
   const text = domainText.toLowerCase();
 
@@ -313,7 +336,10 @@ export default function RoadmapPage() {
       if (savedSubtopics) {
         const parsed = JSON.parse(savedSubtopics) as string[];
         if (Array.isArray(parsed)) {
-          setCompletedSubtopics(parsed);
+          const normalized = Array.from(
+            new Set(parsed.map((id) => normalizeSubtopicId(id)).filter((id): id is string => !!id))
+          );
+          setCompletedSubtopics(normalized);
         }
       }
     } catch {
@@ -333,6 +359,17 @@ export default function RoadmapPage() {
     if (typeof window === 'undefined') return;
     localStorage.setItem('pf_user_name', userName);
   }, [userName]);
+
+  useEffect(() => {
+    if (!selectedDomain || !selectedSubTrack) return;
+
+    try {
+      const hash = makeHash(selectedDomain, selectedSubTrack);
+      localStorage.setItem(`pf_subtopics_${hash}`, JSON.stringify(completedSubtopics));
+    } catch {
+      // Best effort persistence only.
+    }
+  }, [completedSubtopics, selectedDomain, selectedSubTrack]);
 
   const handleCopyText = () => {
     if (!generatedRoadmap) return;
@@ -396,33 +433,46 @@ export default function RoadmapPage() {
   };
 
   const toggleSubtopic = (subtopicId: string) => {
-    if (!selectedDomain || !selectedSubTrack) return;
+    const normalizedSubtopicId = normalizeSubtopicId(subtopicId);
+    const baseTopicId = getTopicIdFromSubtopicId(subtopicId);
+    if (!normalizedSubtopicId || !baseTopicId) return;
 
     setCompletedSubtopics((prev) => {
-      const next = prev.includes(subtopicId)
-        ? prev.filter((id) => id !== subtopicId)
-        : [...prev, subtopicId];
+      const next = prev.includes(normalizedSubtopicId)
+        ? prev.filter((id) => id !== normalizedSubtopicId)
+        : [...prev, normalizedSubtopicId];
 
-      try {
-        const hash = makeHash(selectedDomain, selectedSubTrack);
-        localStorage.setItem(`pf_subtopics_${hash}`, JSON.stringify(next));
-      } catch {
-        // Best effort persistence only.
+      const requiredSubtopics = getSubtopicIdsForTopic(baseTopicId);
+      const isBaseTopicComplete = requiredSubtopics.every((id) => next.includes(id));
+      const childDailyIds = dailyChildrenByBase.get(baseTopicId) ?? [];
+
+      const nextTopicSet = new Set(completedTopics);
+      if (isBaseTopicComplete) {
+        nextTopicSet.add(baseTopicId);
+        childDailyIds.forEach((id) => nextTopicSet.add(id));
+      } else {
+        nextTopicSet.delete(baseTopicId);
+        childDailyIds.forEach((id) => nextTopicSet.delete(id));
       }
+      setCompletedTopics(Array.from(nextTopicSet));
 
       return next;
     });
   };
 
   const getSubtopicsForTopic = (topic: TopicNode): TopicSubtask[] => {
-    const labelSource = topic.resources?.slice(0, 2).map((resource) => resource.label) ?? [];
+    const canonicalTopicId = getCanonicalTopicId(topic.id);
+    const sourceTopic =
+      generatedRoadmap?.phases.flatMap((phase) => phase.topics).find((item) => item.id === canonicalTopicId) ?? topic;
+
+    const labelSource = sourceTopic.resources?.slice(0, 2).map((resource) => resource.label) ?? [];
     const fallback = ['Understand fundamentals', 'Practice key exercises'];
     const labels = [...labelSource, ...fallback].slice(0, 2);
 
     return [
-      { id: `${topic.id}-sub-1`, label: labels[0] ?? 'Understand fundamentals' },
-      { id: `${topic.id}-sub-2`, label: labels[1] ?? 'Practice key exercises' },
-      { id: `${topic.id}-sub-3`, label: topic.projectIdea || 'Build a mini project' },
+      { id: `${canonicalTopicId}-sub-1`, label: labels[0] ?? 'Understand fundamentals' },
+      { id: `${canonicalTopicId}-sub-2`, label: labels[1] ?? 'Practice key exercises' },
+      { id: `${canonicalTopicId}-sub-3`, label: sourceTopic.projectIdea || 'Build a mini project' },
     ];
   };
 
@@ -649,6 +699,7 @@ export default function RoadmapPage() {
       const nextSet = new Set(completedTopics);
       const currentlyCompleted = isTopicCompleted(topicId);
       const parentId = getParentTopicIdFromDailyId(topicId);
+      const baseTopicId = parentId && baseTopicIdSet.has(parentId) ? parentId : topicId;
 
       if (parentId && baseTopicIdSet.has(parentId)) {
         const siblings = dailyChildrenByBase.get(parentId) ?? [];
@@ -675,6 +726,24 @@ export default function RoadmapPage() {
           children.forEach((id) => nextSet.add(id));
         }
       }
+
+      const baseChildren = dailyChildrenByBase.get(baseTopicId) ?? [];
+      const isBaseNowCompleted =
+        nextSet.has(baseTopicId) ||
+        (baseChildren.length > 0 && baseChildren.every((id) => nextSet.has(id)));
+
+      setCompletedSubtopics((prev) => {
+        const nextSubtopics = new Set(prev);
+        const subtopicIds = getSubtopicIdsForTopic(baseTopicId);
+
+        if (isBaseNowCompleted) {
+          subtopicIds.forEach((id) => nextSubtopics.add(id));
+        } else {
+          subtopicIds.forEach((id) => nextSubtopics.delete(id));
+        }
+
+        return Array.from(nextSubtopics);
+      });
 
       setCompletedTopics(Array.from(nextSet));
     },
