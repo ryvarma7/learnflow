@@ -34,4 +34,7 @@ export interface UserPreferences {
   hoursPerDay: number
   targetLevel: 'Fundamentals' | 'Job Ready' | 'Expert'
   deadline?: string
+  learningPreference?: 'Project First' | 'Theory First' | 'Balanced'
+  resourcePreference?: 'Docs' | 'Video' | 'Hands-on'
+  motivation?: string
 }

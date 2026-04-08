@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '@/lib/store';
 import { DOMAIN_DATA, DEPENDENCY_MAP } from '@/lib/domains';
 import * as LucideIcons from 'lucide-react';
+import { PageWrapper } from '@/components/ui/PageWrapper';
 
 function getIcon(name: string) {
   // Convert kebab-case to PascalCase (e.g., bar-chart -> BarChart)
@@ -18,14 +19,45 @@ function getIcon(name: string) {
   if (IconComponent) return <IconComponent size={28} />;
   
   // Custom fallback for "function" icon which might not map properly in some lucide versions
-  if (name === 'function') return <LucideIcons.FunctionSquare size={28} /> || <LucideIcons.Binary size={28} />;
+  if (name === 'function') {
+    const Component = (LucideIcons as any).FunctionSquare || (LucideIcons as any).Binary || LucideIcons.Box;
+    return <Component size={28} />;
+  }
   
   return <LucideIcons.Box size={28} />;
 }
 
 export default function SelectPage() {
   const router = useRouter();
-  const { selectedDomain, setDomain, selectedSubTrack, setSubTrack } = useStore();
+  const { selectedDomain, setDomain, selectedSubTrack, setSubTrack, extraNotes, setExtraNotes } = useStore();
+  const subTrackSectionRef = useRef<HTMLElement | null>(null);
+  const continueSectionRef = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!selectedDomain) return;
+
+    const timer = window.setTimeout(() => {
+      subTrackSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 140);
+
+    return () => window.clearTimeout(timer);
+  }, [selectedDomain]);
+
+  useEffect(() => {
+    if (!selectedSubTrack) return;
+
+    const timer = window.setTimeout(() => {
+      continueSectionRef.current?.scrollIntoView({
+        behavior: 'smooth',
+        block: 'start',
+      });
+    }, 180);
+
+    return () => window.clearTimeout(timer);
+  }, [selectedSubTrack]);
 
   const handleDomainClick = (domain: string) => {
     setDomain(domain);
@@ -45,6 +77,7 @@ export default function SelectPage() {
   const dependencies = selectedSubTrack ? DEPENDENCY_MAP[selectedSubTrack] : null;
 
   return (
+    <PageWrapper>
     <div className="min-h-screen bg-black text-white p-6 pb-24 md:p-12 font-sans">
       <div className="max-w-6xl mx-auto space-y-12">
         {/* Step 1: Domain Selection */}
@@ -65,10 +98,10 @@ export default function SelectPage() {
                 <button
                   key={domainName}
                   onClick={() => handleDomainClick(domainName)}
-                  className={`flex flex-col items-start p-6 rounded-2xl text-left transition-all duration-150 border active:scale-95
+                  className={`flex flex-col items-start p-6 rounded-2xl text-left transition-all duration-150 border active:scale-95 cursor-pointer
                     ${isSelected 
-                      ? 'border-[#6366f1] bg-[#6366f1]/10 shadow-[0_0_20px_rgba(99,102,241,0.15)] ring-1 ring-[#6366f1]/50'
-                      : 'border-[#1f1f1f] bg-[#111111] hover:border-[#6366f1] hover:shadow-[0_0_15px_rgba(99,102,241,0.3)] hover:scale-[1.02]'
+                      ? 'border-[#6366f1] bg-[#6366f1]/10 ring-1 ring-[#6366f1]/50'
+                      : 'border-[#1f1f1f] bg-[#111111] hover:border-[#6366f1] hover:scale-[1.02]'
                     }
                   `}
                 >
@@ -91,6 +124,7 @@ export default function SelectPage() {
         <AnimatePresence>
           {selectedDomain && (
             <motion.section
+              ref={subTrackSectionRef}
               initial={{ opacity: 0, y: -20, height: 0 }}
               animate={{ opacity: 1, y: 0, height: 'auto' }}
               exit={{ opacity: 0, y: -20, height: 0 }}
@@ -109,9 +143,9 @@ export default function SelectPage() {
                       <button
                         key={subTrack}
                         onClick={() => handleSubTrackClick(subTrack)}
-                        className={`px-5 py-2.5 rounded-full text-sm transition-all duration-200 border active:scale-95
+                        className={`px-5 py-2.5 rounded-full text-sm transition-all duration-150 border active:scale-95 cursor-pointer
                           ${isSelected
-                            ? 'bg-[#6366f1] text-white border-[#6366f1] shadow-[0_4px_14px_rgba(99,102,241,0.39)]'
+                            ? 'bg-[#6366f1] text-white border-[#6366f1]'
                             : 'bg-[#0a0a0a] text-zinc-300 border-[#2a2a2a] hover:border-[#6366f1] hover:text-white hover:bg-zinc-900'
                           }
                         `}
@@ -121,6 +155,25 @@ export default function SelectPage() {
                       </button>
                     )
                   })}
+                </div>
+
+                <div className="space-y-2">
+                  <label
+                    htmlFor="extra-notes"
+                    className="text-sm font-medium text-zinc-300"
+                    style={{ fontFamily: 'var(--font-poppins, poppins, sans-serif)' }}
+                  >
+                    Anything else you want us to consider? (optional)
+                  </label>
+                  <textarea
+                    id="extra-notes"
+                    value={extraNotes}
+                    onChange={(e) => setExtraNotes(e.target.value)}
+                    placeholder="Examples: I prefer project-based learning, focus on free resources, include interview prep, skip advanced math..."
+                    rows={3}
+                    className="w-full rounded-xl border border-[#2a2a2a] bg-[#0a0a0a] px-4 py-3 text-sm text-zinc-200 placeholder:text-zinc-500 outline-none transition-all focus:border-[#6366f1] focus:ring-1 focus:ring-[#6366f1]"
+                    style={{ fontFamily: 'var(--font-poppins, poppins, sans-serif)' }}
+                  />
                 </div>
               </div>
 
@@ -148,6 +201,7 @@ export default function SelectPage() {
               <AnimatePresence>
                 {selectedSubTrack && (
                   <motion.div
+                    ref={continueSectionRef}
                     initial={{ opacity: 0, y: 20 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0, y: 20 }}
@@ -155,7 +209,7 @@ export default function SelectPage() {
                   >
                     <button
                       onClick={() => router.push('/preferences')}
-                      className="w-full bg-[#6366f1] hover:bg-[#4f46e5] text-white py-4 rounded-xl transition-all duration-200 flex justify-center items-center gap-2 group hover:shadow-[0_8px_30px_rgb(99,102,241,0.3)] active:scale-[0.98]"
+                      className="w-full bg-[#6366f1] hover:bg-[#4f46e5] text-white py-4 rounded-xl transition-all duration-150 flex justify-center items-center gap-2 group active:scale-[0.98] cursor-pointer"
                       style={{ fontWeight: 600, fontFamily: 'var(--font-poppins, poppins, sans-serif)' }}
                     >
                       Continue 
@@ -169,5 +223,6 @@ export default function SelectPage() {
         </AnimatePresence>
       </div>
     </div>
+    </PageWrapper>
   );
 }
