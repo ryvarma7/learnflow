@@ -61,9 +61,9 @@ export default function GeneratingPage() {
       clearTimeout(slowTimeout)
       setRoadmap(data.roadmap)
       router.replace("/roadmap")
-    } catch (err: any) {
+    } catch (err: unknown) {
       clearTimeout(slowTimeout)
-      setError(err.message || "An unexpected error occurred")
+      setError(err instanceof Error ? err.message : "An unexpected error occurred")
       hasGeneratedRef.current = false
     }
   }, [selectedDomain, selectedSubTrack, preferences, extraNotes, router, setRoadmap])

@@ -45,7 +45,7 @@ export const useStore = create<AppState>((set, get) => ({
         try {
           const hash = btoa(state.selectedDomain + state.selectedSubTrack).slice(0, 8);
           localStorage.setItem(`pf_progress_${hash}`, JSON.stringify(newTopics));
-        } catch(e) {}
+        } catch {}
       }
       
       return { completedTopics: newTopics };

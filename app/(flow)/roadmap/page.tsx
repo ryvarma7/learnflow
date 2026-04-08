@@ -50,6 +50,7 @@ interface TopicSubtask {
 }
 
 type PlannerMode = 'weekly' | 'daily';
+type GoalProfile = 'coding' | 'data' | 'design' | 'math' | 'security' | 'cloud' | 'generic';
 
 function difficultyPillClass(difficulty: TopicNode['difficulty']): string {
   if (difficulty === 'beginner') return 'bg-[#22C55E]/15 text-[#22C55E] border-[#22C55E]/35';
@@ -86,6 +87,110 @@ function getResourceIcon(resource: { type: string; url: string }) {
   }
 
   return <Link2 size={12} className="shrink-0 text-[#6B7280]" />;
+}
+
+function stripTaskPrefix(name: string): string {
+  return name.replace(/^(Watch|Read|Practice|Build):\s*/i, '').trim();
+}
+
+function detectGoalProfile(domainText: string): GoalProfile {
+  const text = domainText.toLowerCase();
+
+  if (/(programming|web development|mobile development|software|frontend|backend|full stack|algorithms|data structures)/.test(text)) {
+    return 'coding';
+  }
+
+  if (/(data science|machine learning|analytics|ai|artificial intelligence|nlp|computer vision|data visualization)/.test(text)) {
+    return 'data';
+  }
+
+  if (/(design|ui|ux|graphics|ar\/vr|game development)/.test(text)) {
+    return 'design';
+  }
+
+  if (/(mathematics|math|probability|linear algebra|theory)/.test(text)) {
+    return 'math';
+  }
+
+  if (/(cybersecurity|security|cryptography|forensics|ethical hacking)/.test(text)) {
+    return 'security';
+  }
+
+  if (/(cloud|devops|docker|kubernetes|aws|azure|google cloud)/.test(text)) {
+    return 'cloud';
+  }
+
+  return 'generic';
+}
+
+function getProofOfWork(profile: GoalProfile): string {
+  if (profile === 'coding') return 'a commit or working demo';
+  if (profile === 'data') return 'a notebook cell output or chart';
+  if (profile === 'design') return 'a screen draft or component mock';
+  if (profile === 'math') return 'solved problems with final answers';
+  if (profile === 'security') return 'a lab note with findings';
+  if (profile === 'cloud') return 'a deployed service or pipeline run';
+  return 'a short artifact you can show';
+}
+
+function getPracticeTaskLabel(profile: GoalProfile, sourceLabel: string): string {
+  if (profile === 'coding') return `Practice: Solve 2 implementation drills from ${sourceLabel}`;
+  if (profile === 'data') return `Practice: Reproduce one analysis from ${sourceLabel}`;
+  if (profile === 'design') return `Practice: Recreate one UI pattern from ${sourceLabel}`;
+  if (profile === 'math') return `Practice: Solve 10 focused problems from ${sourceLabel}`;
+  if (profile === 'security') return `Practice: Run one security lab from ${sourceLabel}`;
+  if (profile === 'cloud') return `Practice: Execute one deploy workflow from ${sourceLabel}`;
+  return `Practice: Apply one concrete exercise from ${sourceLabel}`;
+}
+
+function createResourceTaskName(
+  resource: TopicNode['resources'][number],
+  profile: GoalProfile
+): string {
+  if (resource.type === 'video') {
+    return `Watch: ${resource.label} and capture 3 takeaways`;
+  }
+
+  if (resource.type === 'docs') {
+    return `Read: ${resource.label} and extract action notes`;
+  }
+
+  return getPracticeTaskLabel(profile, resource.label);
+}
+
+function createBuildTaskName(topicName: string, profile: GoalProfile): string {
+  if (profile === 'coding') return `Ship: ${topicName}`;
+  if (profile === 'data') return `Analyze: ${topicName}`;
+  if (profile === 'design') return `Design: ${topicName}`;
+  if (profile === 'math') return `Prove and solve: ${topicName}`;
+  if (profile === 'security') return `Secure and test: ${topicName}`;
+  if (profile === 'cloud') return `Deploy: ${topicName}`;
+  return `Build: ${topicName}`;
+}
+
+function createMilestone(kind: 'weekly' | 'daily', tasks: TopicNode[], proofOfWork: string): string {
+  const labels = tasks.map((task) => stripTaskPrefix(task.name)).filter(Boolean);
+  const first = labels[0] ?? 'the work';
+  const second = labels[1];
+  const last = labels[labels.length - 1] ?? first;
+
+  if (kind === 'weekly') {
+    if (labels.length <= 1) {
+      return `Finish ${first} and be ready to use it`;
+    }
+
+    if (labels.length === 2) {
+      return `Finish ${first} and connect it to ${second}`;
+    }
+
+    return `Finish ${first}, lock in ${second}, and ship a weekly deliverable`;
+  }
+
+  if (labels.length <= 1) {
+    return `Finish ${first} and capture proof: ${proofOfWork}`;
+  }
+
+  return `Do ${first}, then ${last}, and close with proof: ${proofOfWork}`;
 }
 
 export default function RoadmapPage() {
@@ -336,6 +441,14 @@ export default function RoadmapPage() {
     return generatedRoadmap.phases.flatMap((phase) => phase.topics);
   }, [generatedRoadmap]);
 
+  const goalContext = useMemo(
+    () => `${selectedDomain ?? generatedRoadmap?.domain ?? ''} ${selectedSubTrack ?? generatedRoadmap?.subTrack ?? ''}`,
+    [generatedRoadmap?.domain, generatedRoadmap?.subTrack, selectedDomain, selectedSubTrack]
+  );
+
+  const goalProfile = useMemo(() => detectGoalProfile(goalContext), [goalContext]);
+  const proofOfWork = useMemo(() => getProofOfWork(goalProfile), [goalProfile]);
+
   const weeklyPhases = useMemo<WeeklyPhase[]>(() => {
     if (!generatedRoadmap) return [];
     const weeklyBudget = Math.max(6, (preferences?.hoursPerDay ?? 2) * 7);
@@ -351,7 +464,7 @@ export default function RoadmapPage() {
         groups.push({
           id: `week-${weekIndex}`,
           name: `Week ${weekIndex}`,
-          milestone: `Complete ${currentWeekTopics.length} topic${currentWeekTopics.length > 1 ? 's' : ''}`,
+          milestone: createMilestone('weekly', currentWeekTopics, proofOfWork),
           topics: currentWeekTopics,
         });
         currentWeekTopics = [topic];
@@ -367,30 +480,66 @@ export default function RoadmapPage() {
       groups.push({
         id: `week-${weekIndex}`,
         name: `Week ${weekIndex}`,
-        milestone: `Complete ${currentWeekTopics.length} topic${currentWeekTopics.length > 1 ? 's' : ''}`,
+        milestone: createMilestone('weekly', currentWeekTopics, proofOfWork),
         topics: currentWeekTopics,
       });
     }
 
     return groups;
-  }, [allTopics, generatedRoadmap, preferences?.hoursPerDay]);
+  }, [allTopics, generatedRoadmap, preferences?.hoursPerDay, proofOfWork]);
 
   const dailyPhases = useMemo<WeeklyPhase[]>(() => {
     if (!generatedRoadmap) return [];
 
     const dailyBudget = Math.max(1, preferences?.hoursPerDay ?? 2);
+
+    const granularDailyTasks: TopicNode[] = allTopics.flatMap((topic) => {
+      const subtopics = getSubtopicsForTopic(topic);
+      const resourceTasks = topic.resources.map((resource, idx) => ({
+        id: `${topic.id}-res-${idx + 1}`,
+        name: createResourceTaskName(resource, goalProfile),
+        estimatedHours: resource.type === 'video' ? 1 : 1,
+        difficulty: topic.difficulty,
+        description: `Use this resource to move ${topic.name} forward`,
+        resources: [resource],
+        projectIdea: topic.projectIdea,
+      }));
+
+      const subtopicTasks = subtopics.map((subtopic, idx) => ({
+        id: `${topic.id}-subtask-${idx + 1}`,
+        name: subtopic.label,
+        estimatedHours: Math.max(1, Math.ceil(topic.estimatedHours / Math.max(subtopics.length, 1))),
+        difficulty: topic.difficulty,
+        description: `Daily subtopic from ${topic.name}`,
+        resources: topic.resources,
+        projectIdea: topic.projectIdea,
+      }));
+
+      const buildTask: TopicNode = {
+        id: `${topic.id}-build`,
+        name: createBuildTaskName(topic.name, goalProfile),
+        estimatedHours: Math.max(1, Math.ceil(topic.estimatedHours / 3)),
+        difficulty: topic.difficulty,
+        description: `Finish a concrete deliverable for ${topic.name}`,
+        resources: topic.resources,
+        projectIdea: topic.projectIdea,
+      };
+
+      return [...subtopicTasks, ...resourceTasks, buildTask];
+    });
+
     const groups: WeeklyPhase[] = [];
     let currentDayTopics: TopicNode[] = [];
     let currentHours = 0;
 
-    allTopics.forEach((topic) => {
+    granularDailyTasks.forEach((topic) => {
       const nextHours = currentHours + topic.estimatedHours;
       if (currentDayTopics.length > 0 && nextHours > dailyBudget) {
         const dayIndex = groups.length + 1;
         groups.push({
           id: `day-${dayIndex}`,
           name: `Day ${dayIndex}`,
-          milestone: `Complete ${currentDayTopics.length} task${currentDayTopics.length > 1 ? 's' : ''}`,
+          milestone: createMilestone('daily', currentDayTopics, proofOfWork),
           topics: currentDayTopics,
         });
         currentDayTopics = [topic];
@@ -406,13 +555,13 @@ export default function RoadmapPage() {
       groups.push({
         id: `day-${dayIndex}`,
         name: `Day ${dayIndex}`,
-        milestone: `Complete ${currentDayTopics.length} task${currentDayTopics.length > 1 ? 's' : ''}`,
+        milestone: createMilestone('daily', currentDayTopics, proofOfWork),
         topics: currentDayTopics,
       });
     }
 
     return groups;
-  }, [allTopics, generatedRoadmap, preferences?.hoursPerDay]);
+  }, [allTopics, generatedRoadmap, goalProfile, preferences?.hoursPerDay, proofOfWork]);
 
   const plannedPhases = useMemo(
     () => (plannerMode === 'daily' ? dailyPhases : weeklyPhases),
@@ -424,7 +573,7 @@ export default function RoadmapPage() {
 
     setExpandedPhases((prev) => {
       const valid = new Set(plannedPhases.map((phase) => phase.id));
-      const kept = [...prev].filter((id) => valid.has(id));
+      const kept = Array.from(prev).filter((id) => valid.has(id));
       if (kept.length === 0) {
         kept.push(plannedPhases[0].id);
       }
@@ -520,7 +669,7 @@ export default function RoadmapPage() {
                     plannerMode === 'daily' ? 'bg-[#6366F1] text-white' : 'text-[#6B7280] hover:text-white'
                   }`}
                 >
-                  Daily Tasks
+                  Daily Goals
                 </button>
                 <button
                   type="button"
@@ -529,7 +678,7 @@ export default function RoadmapPage() {
                     plannerMode === 'weekly' ? 'bg-[#6366F1] text-white' : 'text-[#6B7280] hover:text-white'
                   }`}
                 >
-                  Weekly Tasks
+                  Weekly Goals
                 </button>
               </div>
 
@@ -691,8 +840,6 @@ export default function RoadmapPage() {
             </aside>
 
             <section className="relative min-w-0 pb-4">
-              <div className="pointer-events-none absolute left-8 top-3 bottom-3 w-px border-l border-dashed border-[#1F1F1F]" />
-
               <div className="space-y-4">
                 {plannedPhases.map((phase, index) => {
                   const phaseCompleted = phase.topics.filter((t) => completedTopics.includes(t.id)).length;
@@ -705,9 +852,22 @@ export default function RoadmapPage() {
                   const activeTopicId = activeTopicByPhase[phase.id] ?? phase.topics[0]?.id;
                   const activeTopic = phase.topics.find((topic) => topic.id === activeTopicId) ?? phase.topics[0];
                   const activeSubtopics = activeTopic ? getSubtopicsForTopic(activeTopic) : [];
+                  const showConnector = index < plannedPhases.length - 1;
 
                   return (
                     <article key={phase.id} className="relative pl-20">
+                      {showConnector && (
+                        <div className="pointer-events-none absolute left-8 top-[44px] -bottom-4 w-px">
+                          <div className="absolute inset-0 bg-[#1F1F1F]" />
+                          <motion.div
+                            className="absolute left-0 top-0 w-px bg-gradient-to-b from-[#6366F1] via-[#7C3AED] to-[#EC4899]"
+                            initial={false}
+                            animate={{ height: isCompleted ? '100%' : '0%' }}
+                            transition={{ duration: 0.35, ease: 'easeOut' }}
+                          />
+                        </div>
+                      )}
+
                       <button
                         type="button"
                         className="absolute left-0 top-3 flex h-16 w-16 items-center justify-center"

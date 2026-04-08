@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useStore } from '@/lib/store';
@@ -15,12 +15,13 @@ function getIcon(name: string) {
     .map(part => part.charAt(0).toUpperCase() + part.slice(1))
     .join('');
   
-  const IconComponent = (LucideIcons as any)[formattedName];
+  const iconMap = LucideIcons as unknown as Record<string, LucideIcons.LucideIcon>;
+  const IconComponent = iconMap[formattedName];
   if (IconComponent) return <IconComponent size={28} />;
   
   // Custom fallback for "function" icon which might not map properly in some lucide versions
   if (name === 'function') {
-    const Component = (LucideIcons as any).FunctionSquare || (LucideIcons as any).Binary || LucideIcons.Box;
+    const Component = iconMap.FunctionSquare || iconMap.Binary || LucideIcons.Box;
     return <Component size={28} />;
   }
   

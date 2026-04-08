@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, ChevronDown, Clock, Target, AlertCircle, BookOpen, Video, Code, Zap, Lock, Star } from 'lucide-react';
+import { Check, ChevronDown, Clock, BookOpen, Video, Code, Zap } from 'lucide-react';
 import { RoadmapData, TopicNode as TopicNodeType } from '@/lib/types';
 import { useStore } from '@/lib/store';
 
@@ -38,19 +38,6 @@ export function VerticalTimeline({ roadmap, onSelectTopic }: VerticalTimelinePro
   );
 
   const progressPercent = (completedCount / totalTopics) * 100;
-
-  const getDifficultyColor = (difficulty: string) => {
-    switch (difficulty) {
-      case 'beginner':
-        return 'from-green-400 to-emerald-500';
-      case 'intermediate':
-        return 'from-amber-400 to-orange-500';
-      case 'advanced':
-        return 'from-red-400 to-rose-500';
-      default:
-        return 'from-gray-400 to-gray-500';
-    }
-  };
 
   const getDifficultyBg = (difficulty: string) => {
     switch (difficulty) {

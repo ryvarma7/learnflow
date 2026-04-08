@@ -1,12 +1,24 @@
 
 import { motion } from 'framer-motion';
-import { X, BookOpen, Video, Code, Terminal, Clock, SignalIcon, CheckCircle2, Circle, Target, Lightbulb, Zap, ArrowRight } from 'lucide-react';
+import { X, BookOpen, Video, Code, Clock, CheckCircle2, Circle, Target, Lightbulb, Zap, ArrowRight } from 'lucide-react';
 import { TopicNode } from '@/lib/types';
 import { useStore } from '@/lib/store';
 
 interface SidePanelProps {
   topic: TopicNode | null;
   onClose: () => void;
+}
+
+function getStableVideoSearchUrl(topicName: string) {
+  const q = encodeURIComponent(`${topicName} tutorial`);
+  return `https://www.youtube.com/results?search_query=${q}`;
+}
+
+function getResourceHref(url: string, type: string, topicName: string) {
+  if (type === 'video') {
+    return getStableVideoSearchUrl(topicName);
+  }
+  return url;
 }
 
 export function SidePanel({ topic, onClose }: SidePanelProps) {
@@ -134,7 +146,7 @@ export function SidePanel({ topic, onClose }: SidePanelProps) {
           {/* Description */}
           <div>
             <h3 className="text-xs font-semibold text-gray-400 mb-3 uppercase tracking-wider flex items-center gap-2">
-              <Lightbulb size={14} /> What You'll Learn
+              <Lightbulb size={14} /> What You Will Learn
             </h3>
             <p className="text-gray-300 text-sm leading-relaxed bg-[#111111] p-4 rounded-lg border border-[#1f1f1f]">
               {topic.description}
@@ -176,7 +188,7 @@ export function SidePanel({ topic, onClose }: SidePanelProps) {
                 {topic.resources.map((res, i) => (
                   <motion.a 
                     key={i} 
-                    href={res.url} 
+                    href={getResourceHref(res.url, res.type, topic.name)} 
                     target="_blank" 
                     rel="noopener noreferrer"
                     whileHover={{ x: 4 }}
@@ -217,7 +229,7 @@ export function SidePanel({ topic, onClose }: SidePanelProps) {
           {/* CTA Footer */}
           <div className="pt-4 border-t border-[#1f1f1f]">
             <p className="text-xs text-gray-500 text-center leading-relaxed">
-              Follow the learning path above to master this topic. Remember to practice regularly! 🚀
+              Follow the learning path above to master this topic. Remember to practice regularly.
             </p>
           </div>
         </div>

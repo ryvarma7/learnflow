@@ -149,8 +149,18 @@ function normalizeResources(
   (resources ?? []).forEach((resource) => {
     const type = resource.type as ResourceType;
     if (!type || !(type in byType)) return;
-    const label = (resource.label || "").trim();
-    const url = (resource.url || "").trim();
+    let label = (resource.label || "").trim();
+    let url = (resource.url || "").trim();
+
+    // Enforce stable behavior: all video resources should open YouTube search for the topic.
+    if (type === "video") {
+      const fallback = videoFallback(topicName);
+      url = fallback.url;
+      if (!label) {
+        label = fallback.label;
+      }
+    }
+
     if (!label || !url || !isTrustedUrl(url)) return;
     if (!byType[type]) {
       byType[type] = { type, label, url };
@@ -214,26 +224,40 @@ function normalizeRoadmap(parsedRoadmap: { phases?: RawPhase[] }, domain: string
   return { phases };
 }
 
-const groqApiKey = process.env.GROQ_API_KEY;
-if (!groqApiKey) {
-  throw new Error("GROQ_API_KEY is not set");
-}
+function getGroqClient() {
+  const groqApiKey = process.env.GROQ_API_KEY;
+  if (!groqApiKey) return null;
 
-// Initialize the Groq client with API key
-const ai = new Groq({
-  apiKey: groqApiKey,
-});
+  return new Groq({ apiKey: groqApiKey });
+}
 
 async function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function generateWithRetry(prompt: string, systemPrompt: string, maxRetries = 3) {
-  let lastError: any;
+function readErrorStatus(error: unknown): number {
+  if (!error || typeof error !== "object") return 500;
+
+  const maybeStatus = (error as { status?: unknown }).status;
+  if (typeof maybeStatus === "number") return maybeStatus;
+
+  const maybeNestedCode = (error as { error?: { error?: { code?: unknown } } }).error?.error?.code;
+  if (typeof maybeNestedCode === "number") return maybeNestedCode;
+
+  return 500;
+}
+
+async function generateWithRetry(
+  prompt: string,
+  systemPrompt: string,
+  client: Groq,
+  maxRetries = 3
+) {
+  let lastError: unknown;
   
   for (let i = 0; i < maxRetries; i++) {
     try {
-      const response = await ai.chat.completions.create({
+      const response = await client.chat.completions.create({
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: prompt }
@@ -242,9 +266,9 @@ async function generateWithRetry(prompt: string, systemPrompt: string, maxRetrie
         response_format: { type: "json_object" },
       });
       return response;
-    } catch (error: any) {
+    } catch (error: unknown) {
       lastError = error;
-      const status = error.status || error.error?.error?.code || 500;
+      const status = readErrorStatus(error);
       
       // Retry on 503 (Unavailable) or 429 (Rate Limit)
       if (status === 503 || status === 429) {
@@ -264,6 +288,14 @@ async function generateWithRetry(prompt: string, systemPrompt: string, maxRetrie
 
 export async function POST(req: NextRequest) {
   try {
+    const ai = getGroqClient();
+    if (!ai) {
+      return NextResponse.json(
+        { error: "Server is missing GROQ_API_KEY" },
+        { status: 500 }
+      );
+    }
+
     const body = await req.json();
     const {
       domain,
@@ -285,9 +317,11 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    const systemPrompt = `You are an expert curriculum designer and learning path architect. 
-You return ONLY valid JSON — no markdown, no backticks, no explanation. 
-Your roadmaps are practical, progressive, and tailored to real learners.`;
+    const systemPrompt = `You are an expert curriculum designer and learning path architect.
+  You return ONLY valid JSON. No markdown, no backticks, no explanations.
+  Prioritize practical outcomes over theory-only sequencing.
+  Avoid generic filler such as "learn basics", "understand fundamentals", or "practice more" unless paired with a concrete skill/output.
+  Every phase and topic must map to something the learner can demonstrate.`;
 
     let userPrompt = `Generate a personalized learning roadmap for:
 - Domain: ${domain}
@@ -348,13 +382,22 @@ Rules:
 - 3 phases for Fundamentals, 4 phases for Job Ready, 5 phases for Expert
 - 4-6 topics per phase
 - estimatedHours must be realistic for the daily commitment provided
+- make topic sequencing dependency-aware: each phase should build on previous phases with no sudden jumps
+- avoid duplicate topics across phases unless the later topic is explicitly advanced (e.g., "X Optimization", "X at Scale")
+- topic names must be concrete and specific to the track (mention actual tools, methods, protocols, frameworks, or techniques when relevant)
+- topic descriptions must state: what is learned + where it is used in real work
+- milestone must be outcome-based and testable (what can be built, solved, deployed, analyzed, or demonstrated)
+- projectIdea must include a clear deliverable and acceptance criteria in one sentence
+- prefer actionable language (build, implement, debug, deploy, analyze, secure, optimize, evaluate)
+- do not use vague-only goals like "explore", "get familiar", "learn about" as the main phrasing
 - adapt ordering and project ideas to the stated learning preference and motivation when provided
 - bias resource picks toward the preferred resource type when provided while keeping variety
 - resource URLs must be real: MDN, official docs, YouTube channels, LeetCode, HackerRank, freeCodeCamp etc.
+- each topic must include all 3 resource types exactly once: docs, video, practice
 - projectIdea must be specific and buildable`;
 
     // Call Groq API with retry logic
-    const response = await generateWithRetry(userPrompt, systemPrompt);
+    const response = await generateWithRetry(userPrompt, systemPrompt, ai);
 
     let textResponse = response.choices[0]?.message?.content || "";
 
@@ -385,10 +428,10 @@ Rules:
         phases: normalizedRoadmap.phases,
       },
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Roadmap generation failed:", error);
-    
-    const status = error.status || error.code;
+
+    const status = readErrorStatus(error);
     const message = status === 503 
       ? "AI model is currently overloaded. Please try again in 30 seconds." 
       : "Generation failed. Please check your inputs and try again.";

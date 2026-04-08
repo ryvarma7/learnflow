@@ -1,4 +1,30 @@
 const { Groq } = require('groq-sdk');
+const fs = require('fs');
+const path = require('path');
+
+function loadEnvLocal() {
+  const envPath = path.join(__dirname, '.env.local');
+  if (!fs.existsSync(envPath)) return;
+
+  const fileText = fs.readFileSync(envPath, 'utf8');
+  fileText.split(/\r?\n/).forEach((line) => {
+    const trimmed = line.trim();
+    if (!trimmed || trimmed.startsWith('#')) return;
+
+    const separatorIndex = trimmed.indexOf('=');
+    if (separatorIndex <= 0) return;
+
+    const key = trimmed.slice(0, separatorIndex).trim();
+    const rawValue = trimmed.slice(separatorIndex + 1).trim();
+    const value = rawValue.replace(/^['"]|['"]$/g, '');
+
+    if (!process.env[key]) {
+      process.env[key] = value;
+    }
+  });
+}
+
+loadEnvLocal();
 
 const apiKey = process.env.GROQ_API_KEY;
 if (!apiKey) {
