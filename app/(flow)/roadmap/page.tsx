@@ -460,7 +460,7 @@ export default function RoadmapPage() {
     });
   };
 
-  const getSubtopicsForTopic = (topic: TopicNode): TopicSubtask[] => {
+  const getSubtopicsForTopic = useCallback((topic: TopicNode): TopicSubtask[] => {
     const canonicalTopicId = getCanonicalTopicId(topic.id);
     const sourceTopic =
       generatedRoadmap?.phases.flatMap((phase) => phase.topics).find((item) => item.id === canonicalTopicId) ?? topic;
@@ -474,7 +474,7 @@ export default function RoadmapPage() {
       { id: `${canonicalTopicId}-sub-2`, label: labels[1] ?? 'Practice key exercises' },
       { id: `${canonicalTopicId}-sub-3`, label: sourceTopic.projectIdea || 'Build a mini project' },
     ];
-  };
+  }, [generatedRoadmap]);
 
   const totals = useMemo(() => {
     if (!generatedRoadmap) {
@@ -615,7 +615,7 @@ export default function RoadmapPage() {
     }
 
     return groups;
-  }, [allTopics, generatedRoadmap, goalProfile, preferences?.hoursPerDay, proofOfWork]);
+  }, [allTopics, generatedRoadmap, getSubtopicsForTopic, goalProfile, preferences?.hoursPerDay, proofOfWork]);
 
   const plannedPhases = useMemo(
     () => (plannerMode === 'daily' ? dailyPhases : weeklyPhases),
